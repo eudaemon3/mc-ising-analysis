@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "physic-mc-framework"
+authors = [{name = "Sebastian Brötz", email = "sbroetz@student.tugraz.at"}]
+version = "0.0.1"
+requires-python = ">=3.11"
+
+dependencies = [
+  "numpy",
+  "scipy",
+  "matplotlib",
+]
