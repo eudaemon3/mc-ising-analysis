@@ -12,5 +12,7 @@ dependencies = [
   "numpy",
   "scipy",
   "matplotlib",
-  "ipykernel"
+  "ipykernel",
+  "scienceplots",
+  "numba"
 ]

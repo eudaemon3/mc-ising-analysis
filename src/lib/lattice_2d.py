@@ -1,0 +1,41 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+class Lattice2D:
+    def __init__(self, N: int, spin_prob: float):
+        if not 0 <= spin_prob <= 1:
+            raise ValueError
+
+        self.length = N # assume square lattice
+        init_rnd = np.random.random((N,N))
+
+        lattice = np.ones((N,N))
+        lattice[init_rnd < spin_prob] = -1
+
+        self.lattice = lattice
+
+    def _sum_edges(self, pos:tuple[int]) -> int:
+        E_i = 0
+        y,x = pos
+        sigma_i = self.lattice[y,x]
+
+        if x > 0:
+            E_i += -sigma_i*self.lattice[y,x-1]
+        if x < self.length-1:
+            E_i += -sigma_i*self.lattice[y,x+1]
+        if y > 0:
+            E_i += -sigma_i*self.lattice[y-1,x]
+        if y < self.length-1:
+            E_i += -sigma_i*self.lattice[y+1,x]
+
+        return E_i
+    
+    def get_energy(self) -> np.float64:
+        E_tot = 0
+        for y in range(self.length):
+            for x in range(self.length):
+                E_tot += self._sum_edges((y,x))
+        return -E_tot
+    
+    def _show_img(self) -> None:
+        plt.imshow(self.lattice)
