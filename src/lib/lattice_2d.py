@@ -2,9 +2,20 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 class Lattice2D:
+    """
+    Custom 2D-Ising-Model lattice class.
+    The lattice is represented by an N by N array of spins taking values of +1 or -1.
+
+    Attributes:
+        N (int): 
+            The size of the square lattice.
+        spin_prob (float): 
+            The probability of initializing a spin to -1.
+    """
+
     def __init__(self, N: int, spin_prob: float):
         if not 0 <= spin_prob <= 1:
-            raise ValueError
+            raise ValueError("spin_prob must be between 0 and 1.")
 
         self.length = N # assume square lattice
         init_rnd = np.random.random((N,N))

@@ -10,8 +10,23 @@ def _metropolis_pbc(
     energy: np.float64,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Metropolis-Algorithmus für das 2D-Ising-Modell 
-    mit periodic boundary conditions.
+    Metropolis Algorithm for the 2D-Ising-Model using periodic boundary conditions.
+
+    Parameters
+    ----------
+    spin_array : np.ndarray
+        Square array of spins (+1 or -1) representing the lattice state.
+    times : int
+        Number of Metropolis updates.
+    beta_J : np.float64
+        Related to Temperature of the system (beta * J = J/(k_B*T)).
+    energy : np.float64
+        Initial energy of the spin configuration.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        A tuple containing total magnetization and energy for each update step.
     """
     spin_array = spin_array.copy()
     N = len(spin_array)
@@ -49,6 +64,26 @@ def _metropolis_open(
     beta_J: np.float64,
     energy: np.float64
 ) -> tuple[np.ndarray, np.ndarray]:
+
+    """
+    Metropolis Algorithm for the 2D-Ising-Model using open boundary conditions.
+
+    Parameters
+    ----------
+    spin_array : np.ndarray
+        Square array of spins (+1 or -1) representing the lattice state.
+    times : int
+        Number of Metropolis updates.
+    beta_J : np.float64
+        Related to Temperature of the system (beta * J = J/(k_B*T)).
+    energy : np.float64
+        Initial energy of the spin configuration.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        A tuple containing total magnetization and energy for each update step.
+    """
 
     spin_array = spin_array.copy()
     net_spin = np.zeros(times-1)
@@ -88,6 +123,21 @@ def _metropolis_open(
     return net_spin, net_energy
 
 class IsingModel:
+    """
+    Custom Monte Carlo class for a 2D Ising lattice.
+
+    The class runs Metropolis updates over a range of temperature values
+    computes average magnetization and energy statistics.
+
+    Attributes
+    ----------
+    lattice : Lattice2D
+        The underlying square Ising Model lattice.
+    time : int
+        The number of Monte Carlo update steps to perform per temperature.
+    beta_j : np.ndarray
+        Array of inverse temperature times coupling constant values.
+    """
 
     _DEFAULT_PATH = "/tmp/ising_data.txt"
 
