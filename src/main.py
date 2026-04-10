@@ -12,9 +12,10 @@ plt.rcParams.update({'font.size': 14})
 matplotlib.use("Agg")
 
 steps = 1_000_000
-size = 50
-# beta_j = np.arange(0.2, 1, 0.02)
-beta_j = np.arange(0.1, 2, 0.05)
+size = 100
+
+beta_j = np.arange(0.2, 1, 0.02) # good range for phase change
+# beta_j = np.arange(0.1, 2, 0.05) # good range for Cv
 
 lattice_n = Lattice2D(size, 0.75) # 75% spin down
 lattice_p = Lattice2D(size, 0.25) # 25% spin down
@@ -22,11 +23,11 @@ lattice_p = Lattice2D(size, 0.25) # 25% spin down
 Ising_n = IsingModel(lattice_n, steps, beta_j)
 Ising_p = IsingModel(lattice_p, steps, beta_j)
 
-# Ising_n.save_txt("/tmp/Ising_n.txt")
-# Ising_p.save_txt("/tmp/Ising_p.txt")
+Ising_n.save_txt("/tmp/Ising_n_good_PS.txt")
+Ising_p.save_txt("/tmp/Ising_p_good_PS.txt")
 
-# ms_n, E_means_n, E_stds_n = Ising_n.load_txt("/tmp/Ising_n.txt")
-# ms_p, E_means_p, E_stds_p = Ising_p.load_txt("/tmp/Ising_p.txt")
+ms_n, E_means_n, E_stds_n = Ising_n.load_txt("/tmp/Ising_n_good_PS.txt")
+ms_p, E_means_p, E_stds_p = Ising_p.load_txt("/tmp/Ising_p_good_PS.txt")
 
 ms_n, E_means_n, E_stds_n = Ising_n.get_spin_energy()
 ms_p, E_means_p, E_stds_p = Ising_p.get_spin_energy()
