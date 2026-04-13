@@ -1,0 +1,30 @@
+# physic-mc-framework
+
+Ein Python-Framework zur Simulation und Analyse des 2D-Ising-Modells mithilfe von Monte-Carlo.
+
+## Überblick
+
+Dieses Projekt bietet:
+- eine `Lattice2D`-Klasse zur Erzeugung eies 2D-Spin-Gitters
+- eine `IsingModel`-Klasse zur Ausführung von Metropolis-Updates
+- Unterstützung für offene und periodische Randbedingungen
+- automatische Berechnung der mittleren Magnetisierung und Energie
+- Speicherung und Laden der Simulationsergebnisse im CSV-Format
+
+
+## Anforderungen
+
+- Python 3.11+
+- numpy
+- scipy
+- matplotlib
+- ipykernel
+- scienceplots
+- numba
+
+## Nutzung
+
+
+## Hinweise
+
+Das Projekt ist als Demonstration einer Monte-Carlo-Simulation des 2D-Ising-Modells gedacht und kann leicht erweitert werden, um z.B. weitere Messgrößen, Visualisierungen oder unterschiedliche Gittergrößen zu unterstützen.
