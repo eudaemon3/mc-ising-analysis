@@ -1,4 +1,4 @@
-# physic-mc-framework
+# mc-ising-analysis-framework
 
 Ein Python-Framework zur Simulation und Analyse des 2D-Ising-Modells mithilfe von Monte-Carlo.
 
