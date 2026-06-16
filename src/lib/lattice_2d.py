@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import subprocess
 
 class Lattice2D:
     """
@@ -49,4 +50,7 @@ class Lattice2D:
         return -E_tot
     
     def _show_img(self) -> None:
+        plt.figure(5,5)
         plt.imshow(self.lattice)
+        # plt.savefig("/tmp/lattice_init.png")
+        # subprocess.run(["code", "/tmp/lattice_init.png"])
