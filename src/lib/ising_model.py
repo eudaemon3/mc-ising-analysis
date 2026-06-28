@@ -168,6 +168,7 @@ class IsingModel:
         eval_time = self.time // 10
 
         for i, bj in enumerate(self.beta_j):
+            print((f'Caclulating System for beta*J = {bj:.2f}'))
             spins, energies = self._run_metropolis(self.lattice.lattice, self.time, bj, self.lattice.get_energy(), pbc)
             ms[i] = spins[-eval_time:].mean()/self.lattice.length**2
             E_means[i] = energies[-eval_time:].mean()
