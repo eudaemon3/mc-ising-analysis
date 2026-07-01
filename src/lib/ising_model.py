@@ -1,5 +1,8 @@
 import numpy as np
 from numba import njit
+from scipy.signal import correlate, correlation_lags
+
+from lib.ising_analysis import IsingResult
 from lib.lattice_2d import Lattice2D
 
 @njit("UniTuple(f8[:], 2)(f8[:,:], i8, f8, f8)", nogil=True)
@@ -11,46 +14,33 @@ def _metropolis_pbc(
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Metropolis Algorithm for the 2D-Ising-Model using periodic boundary conditions.
-
-    Parameters
-    ----------
-    spin_array : np.ndarray
-        Square array of spins (+1 or -1) representing the lattice state.
-    times : int
-        Number of Metropolis updates.
-    beta_J : np.float64
-        Related to Temperature of the system (beta * J = J/(k_B*T)).
-    energy : np.float64
-        Initial energy of the spin configuration.
-
-    Returns
-    -------
-    tuple[np.ndarray, np.ndarray]
-        A tuple containing total magnetization and energy for each update step.
+    'times' now represents full Monte Carlo sweeps (N*N flip attempts).
     """
     spin_array = spin_array.copy()
     N = len(spin_array)
+    N_sq = N * N
 
     net_spin = np.zeros(times)
     net_energy = np.zeros(times)
 
     for t in range(times):
-        x = np.random.randint(0, N)
-        y = np.random.randint(0, N)
+        # für jeden Schritt ein Sweep über den gesamten Lattice
+        for _ in range(N_sq):
+            x = np.random.randint(0, N)
+            y = np.random.randint(0, N)
 
-        spin_i = spin_array[y, x]
-        spin_f = -spin_i
+            spin_i = spin_array[y, x]
+            spin_f = -spin_i
 
-        # Periodische Randbedingungen via Modulo
-        dE = 2.0 * spin_i * (
-            spin_array[y, (x + 1) % N] +
-            spin_array[y, (x - 1) % N] +
-            spin_array[(y + 1) % N, x] +
-            spin_array[(y - 1) % N, x]
-        )
-        if dE <= 0.0 or np.random.random() < np.exp(-beta_J * dE):
-            spin_array[y, x] = spin_f
-            energy += dE
+            dE = 2.0 * spin_i * (
+                spin_array[y, (x + 1) % N] +
+                spin_array[y, (x - 1) % N] +
+                spin_array[(y + 1) % N, x] +
+                spin_array[(y - 1) % N, x]
+            )
+            if dE <= 0.0 or np.random.random() < np.exp(-beta_J * dE):
+                spin_array[y, x] = spin_f
+                energy += dE
 
         net_spin[t] = spin_array.sum()
         net_energy[t] = energy
@@ -64,58 +54,44 @@ def _metropolis_open(
     beta_J: np.float64,
     energy: np.float64
 ) -> tuple[np.ndarray, np.ndarray]:
-
     """
     Metropolis Algorithm for the 2D-Ising-Model using open boundary conditions.
-
-    Parameters
-    ----------
-    spin_array : np.ndarray
-        Square array of spins (+1 or -1) representing the lattice state.
-    times : int
-        Number of Metropolis updates.
-    beta_J : np.float64
-        Related to Temperature of the system (beta * J = J/(k_B*T)).
-    energy : np.float64
-        Initial energy of the spin configuration.
-
-    Returns
-    -------
-    tuple[np.ndarray, np.ndarray]
-        A tuple containing total magnetization and energy for each update step.
+    'times' now represents full Monte Carlo sweeps (N*N flip attempts).
     """
-
     spin_array = spin_array.copy()
-    net_spin = np.zeros(times-1)
-    net_energy = np.zeros(times-1)
+    net_spin = np.zeros(times)
+    net_energy = np.zeros(times)
     N = len(spin_array)
+    N_sq = N * N
 
-    for t in range(times-1):
-        x = np.random.randint(0, N)
-        y = np.random.randint(0, N)
+    for t in range(times):
+        # für jeden Schritt ein Sweep über den gesamten Lattice
+        for _ in range(N_sq):
+            x = np.random.randint(0, N)
+            y = np.random.randint(0, N)
 
-        spin_i = spin_array[y,x]
-        spin_f = spin_i * -1
-        E_i = 0
-        E_f = 0
+            spin_i = spin_array[y,x]
+            spin_f = spin_i * -1
+            E_i = 0
+            E_f = 0
 
-        if x > 0:
-            E_i += -spin_i*spin_array[y,x-1]
-            E_f += -spin_f*spin_array[y,x-1]
-        if x < N-1:
-            E_i += -spin_i*spin_array[y,x+1]
-            E_f += -spin_f*spin_array[y,x+1]
-        if y > 0:
-            E_i += -spin_i*spin_array[y-1,x]
-            E_f += -spin_f*spin_array[y-1,x]
-        if y < N-1:
-            E_i += -spin_i*spin_array[y+1,x]
-            E_f += -spin_f*spin_array[y+1,x]
-        dE = E_f - E_i
+            if x > 0:
+                E_i += -spin_i*spin_array[y,x-1]
+                E_f += -spin_f*spin_array[y,x-1]
+            if x < N-1:
+                E_i += -spin_i*spin_array[y,x+1]
+                E_f += -spin_f*spin_array[y,x+1]
+            if y > 0:
+                E_i += -spin_i*spin_array[y-1,x]
+                E_f += -spin_f*spin_array[y-1,x]
+            if y < N-1:
+                E_i += -spin_i*spin_array[y+1,x]
+                E_f += -spin_f*spin_array[y+1,x]
+            dE = E_f - E_i
 
-        if dE <= 0.0 or np.random.random() < np.exp(-beta_J * dE):
-            spin_array[y, x] = spin_f
-            energy += dE
+            if dE <= 0.0 or np.random.random() < np.exp(-beta_J * dE):
+                spin_array[y, x] = spin_f
+                energy += dE
 
         net_spin[t] = spin_array.sum()
         net_energy[t] = energy
@@ -123,80 +99,100 @@ def _metropolis_open(
     return net_spin, net_energy
 
 class IsingModel:
-    """
-    Custom Monte Carlo class for a 2D Ising lattice.
-
-    The class runs Metropolis updates over a range of temperature values
-    computes average magnetization and energy statistics.
-
-    Attributes
-    ----------
-    lattice : Lattice2D
-        The underlying square Ising Model lattice.
-    time : int
-        The number of Monte Carlo update steps to perform per temperature.
-    beta_j : np.ndarray
-        Array of inverse temperature times coupling constant values.
-    """
-
-    _DEFAULT_PATH = "/tmp/ising_data.txt"
-
     def __init__(self, lattice: Lattice2D, time_steps: int, beta_j: np.ndarray):
         self.lattice = lattice
         self.time = time_steps
-        self.beta_j = beta_j
+        self.beta_j = np.asarray(beta_j, dtype=np.float64)
 
     @staticmethod
-    def _run_metropolis(
-        spin_array: np.ndarray,
-        times: int,
-        beta_J: float,
-        energy: float,
-        pbc: bool = False
-    ) -> tuple[np.ndarray, np.ndarray]:
-        if pbc:
-            return _metropolis_pbc(spin_array, times, beta_J, energy)
+    def _autocorr(series: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]:
+        values = np.asarray(series, dtype=np.float64)
+        if values.ndim != 1:
+            raise ValueError("series must be one-dimensional")
+
+        y = values - values.mean()
+        if np.allclose(y, 0.0):
+            return np.ones(values.size, dtype=np.float64), 0.5
+
+        raw = correlate(y, y, mode="full", method="fft")
+        lags = correlation_lags(values.size, values.size, mode="full")
+        acorr = raw[lags >= 0]
+        acorr /= acorr[0]
+
+        if acorr.size == 0:
+            return acorr, 0.0
+
+        stop_index = np.where(acorr[1:] <= 0.0)[0]
+        if stop_index.size == 0:
+            cutoff = acorr.size
         else:
-            return _metropolis_open(spin_array, times, beta_J, energy)
+            cutoff = stop_index[0] + 1
+        tau_int = 0.5 + float(acorr[1:cutoff].sum())
 
+        return acorr, tau_int
 
-    def get_spin_energy(self, pbc: bool = False):
-        len_beta = len(self.beta_j)
-        ms = np.zeros(len_beta)
-        E_means = np.zeros(len_beta)
-        E_stds = np.zeros(len_beta)
-        eval_time = self.time // 10
+    def _simulate_system(self, beta_value: float, pbc: bool,
+        ) -> tuple[np.ndarray, np.ndarray]:
+        initial_energy = self.lattice.get_energy()
+        if pbc:
+            return _metropolis_pbc(self.lattice.lattice, self.time, beta_value, initial_energy)
+        else:
+            return _metropolis_open(self.lattice.lattice, self.time, beta_value, initial_energy)
 
-        for i, bj in enumerate(self.beta_j):
-            print((f'Caclulating System for beta*J = {bj:.2f}'))
-            spins, energies = self._run_metropolis(self.lattice.lattice, self.time, bj, self.lattice.get_energy(), pbc)
-            ms[i] = spins[-eval_time:].mean()/self.lattice.length**2
-            E_means[i] = energies[-eval_time:].mean()
-            E_stds[i] = energies[-eval_time:].std()
-        return ms, E_means, E_stds
-    
-    def save_txt(self, path: str = _DEFAULT_PATH) -> None:
-        ms, E_means, E_stds = self.get_spin_energy()
+    def run_analysis(self, pbc: bool = False) -> IsingResult:
+        beta_values = self.beta_j
+        temperatures = 1.0 / beta_values
+        n_beta = beta_values.size
 
-        data = np.column_stack([ms, E_means, E_stds])
-        header = "m,E_mean,E_std"
+        magnetization = np.zeros(n_beta, dtype=np.float64)
+        energy_mean = np.zeros(n_beta, dtype=np.float64)
+        energy_std = np.zeros(n_beta, dtype=np.float64)
+        susceptibility = np.zeros(n_beta, dtype=np.float64)
+        heat_capacity = np.zeros(n_beta, dtype=np.float64)
+        autocorrelation_time = np.zeros(n_beta, dtype=np.float64)
+        sample_window = np.zeros(n_beta, dtype=np.int64)
+        
+        spin_density_history = np.zeros((n_beta, self.time), dtype=np.float64)
+        burn_in_idx = int(self.time * 0.2) 
+        eq_length = self.time - burn_in_idx
+        autocorrelation = np.zeros((n_beta, eq_length), dtype=np.float64)
+        autocorrelation_lags = np.arange(eq_length, dtype=np.int64)
 
-        np.savetxt(path, data, header=header, fmt="%.8f", delimiter=",")
+        for index, beta_value in enumerate(beta_values):
+            print(f"Calculating analysis for beta*J = {beta_value:.2f}")
+            spins, energies = self._simulate_system(beta_value, pbc)
 
-    @staticmethod
-    def load_txt(path: str = _DEFAULT_PATH) -> tuple[np.ndarray]:
-        try:
-            data = np.loadtxt(path, comments="#", delimiter=",")
-        except OSError as exc:
-            raise FileNotFoundError(f"file not found: {path}") from exc
+            spin_density = spins / (self.lattice.length**2)
+            spin_density_history[index] = spin_density
 
-        if data.ndim != 2 or data.shape[1] != 3:
-            raise ValueError(
-                f" Unexpected format in {path}: "
-                f" expect (0,3), found {data.shape}"
-            )
+            eq_spins = spin_density[burn_in_idx:]
+            eq_energies = energies[burn_in_idx:]
 
-        return data[:, 0], data[:, 1], data[:, 2]
+            acorr, tau_int = self._autocorr(eq_spins)
+            sample_window[index] = len(eq_spins)
 
+            magnetization[index] = eq_spins.mean()
+            energy_mean[index] = eq_energies.mean()
+            energy_std[index] = eq_energies.std()
+            susceptibility[index] = beta_value * self.lattice.length**2 * eq_spins.var()
+            heat_capacity[index] = (beta_value**2) * eq_energies.var() / self.lattice.length**2
 
-    
+            autocorrelation[index, :acorr.size] = acorr
+            autocorrelation_time[index] = tau_int
+
+        return IsingResult(
+            temperature=temperatures,
+            magnetization=magnetization,
+            energy_mean=energy_mean,
+            energy_std=energy_std,
+            susceptibility=susceptibility,
+            heat_capacity=heat_capacity,
+
+            autocorrelation_time=autocorrelation_time,
+            sample_window=sample_window,
+            autocorrelation_lags=autocorrelation_lags,
+            autocorrelation=autocorrelation,
+            
+            spin_density=spin_density_history,
+            time_steps=self.time,
+        )

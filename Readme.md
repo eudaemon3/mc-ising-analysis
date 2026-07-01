@@ -6,10 +6,11 @@ Ein Python-Framework zur Simulation und Analyse des 2D-Ising-Modells mithilfe vo
 
 Dieses Projekt bietet:
 - eine `Lattice2D`-Klasse zur Erzeugung eies 2D-Spin-Gitters
-- eine `IsingModel`-Klasse zur Ausführung von Metropolis-Updates
+- eine schlanke `IsingModel`-Klasse zur Simulation und Analyse des Systems
+- eine `IsingAnalysisResult`-Dataclass für alle Analyseergebnisse
+- eine `IsingResultPlotter`-Klasse für die Darstellung der Resultate
 - Unterstützung für offene und periodische Randbedingungen
-- automatische Berechnung der mittleren Magnetisierung und Energie
-- Speicherung und Laden der Simulationsergebnisse im CSV-Format
+- Analyse von Magnetisierung, Energie, Suszeptibilität, spezifischer Wärme und Autokorrelation
 
 
 ## Anforderungen
@@ -23,6 +24,18 @@ Dieses Projekt bietet:
 - numba
 
 ## Nutzung
+
+Das Beispiel in `src/main.py` nutzt eine kleine Konfiguration mit zwei Startzuständen: ein Gitter mit 75% Spin up und ein Gitter mit 75% Spin down.
+Beide werden über denselben Temperaturbereich analysiert, damit der Übergang zu höheren Temperaturen sichtbar wird.
+
+Die Resultate werden als 2x2-Übersichtsplot, ein zweigeteiltes Autokorrelationsdiagramm und ein Plot für die Autokorrelationszeit erzeugt.
+Das Sample-Fenster wird dabei automatisch aus der Autokorrelationszeit bestimmt.
+
+Die wichtigsten Einstiegspunkte sind:
+
+- `IsingModel.run_analysis()`
+- `IsingAnalysisResult`
+- `IsingResultPlotter`
 
 
 ## Hinweise
