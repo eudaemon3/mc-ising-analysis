@@ -3,11 +3,14 @@ FROM mcr.microsoft.com/devcontainers/python
 LABEL author="Sebastian Brötz"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    texlive-full \
+    openmpi-bin \
+    libopenmpi-dev \
+    texlive-latex-base \
+    texlive-latex-recommended \
+    texlive-fonts-recommended \
+    texlive-latex-extra \
     dvipng \
     cm-super \
-    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
-    
-EXPOSE 8988
+
 WORKDIR /workspace

@@ -14,5 +14,6 @@ dependencies = [
   "matplotlib",
   "ipykernel",
   "scienceplots",
-  "numba"
+  "numba",
+  "mpi4py"
 ]

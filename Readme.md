@@ -22,14 +22,21 @@ Dieses Projekt bietet:
 - ipykernel
 - scienceplots
 - numba
+- mpi4py
 
 ## Nutzung
 
 Das Beispiel in `src/main.py` nutzt eine kleine Konfiguration mit zwei Startzuständen: ein Gitter mit 75% Spin up und ein Gitter mit 75% Spin down.
 Beide werden über denselben Temperaturbereich analysiert, damit der Übergang zu höheren Temperaturen sichtbar wird.
 
-Die Resultate werden als 2x2-Übersichtsplot, ein zweigeteiltes Autokorrelationsdiagramm und ein Plot für die Autokorrelationszeit erzeugt.
+Die Resultate werden als 2x2-Übersichtsplot und ein zweigeteiltes Autokorrelationsdiagramm erzeugt.
 Das Sample-Fenster wird dabei automatisch aus der Autokorrelationszeit bestimmt.
+
+Für MPI wird die unabhängige Temperaturachse auf die verfügbaren Prozesse verteilt. Starte das Skript dann mit zum Beispiel:
+
+```bash
+mpiexec -n 4 python src/main.py
+```
 
 Die wichtigsten Einstiegspunkte sind:
 

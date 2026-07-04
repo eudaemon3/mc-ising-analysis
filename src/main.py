@@ -4,6 +4,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import scienceplots
+from mpi4py import MPI
 
 from lib.ising_analysis import AnalysisResults
 from lib.ising_model import IsingModel
@@ -16,20 +17,31 @@ lattice_size = 64
 spin_probabilities = (0.25, 0.75)
 time_steps = 80_000
 beta_j = np.arange(0.20, 0.75, 0.05)
+random_seed = 42
 
 def main() -> None:
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+
+    np.random.seed(random_seed)
+    lattices = [Lattice2D(lattice_size, lattice_value) for lattice_value in spin_probabilities]
+
     results = []
-    for lattice_value in spin_probabilities:
-        lattice = Lattice2D(lattice_size, lattice_value)
+    for model_index, lattice in enumerate(lattices):
         model = IsingModel(lattice, time_steps, beta_j)
-        results.append(model.run_analysis(False, True))
+        result = model.run_analysis(False, True, comm=comm, seed_offset=model_index * 100_000)
+        if rank == 0:
+            results.append(result)
+
+    if rank != 0:
+        return
 
     isingAnalysis = AnalysisResults(results)
     summary_figure = isingAnalysis.plot_summary()
     autocorrelation_figure = isingAnalysis.plot_autocorrelation(beta_j, 2)
 
-    summary_path = "/workspace/results/ising_summary_1.png"
-    autocorrelation_path = "/workspace/results/ising_autocorrelation_1.png"
+    summary_path = "/workspace/results/ising_summary_3.png"
+    autocorrelation_path = "/workspace/results/ising_autocorrelation_3.png"
 
     summary_figure.savefig(summary_path, dpi=200)
     autocorrelation_figure.savefig(autocorrelation_path, dpi=200)
