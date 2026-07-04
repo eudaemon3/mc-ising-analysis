@@ -3,6 +3,8 @@ from dataclasses import dataclass
 import matplotlib.pyplot as plt
 import numpy as np
 
+FONTSIZE = 16
+
 @dataclass(frozen=True)
 class IsingResult:
     temperature: np.ndarray
@@ -18,7 +20,6 @@ class IsingResult:
     spin_density: np.ndarray
     time_steps: int
 
-
 class AnalysisResults:
     def __init__(self, results: list[IsingResult]):
         if not results:
@@ -33,7 +34,7 @@ class AnalysisResults:
             {"color": "crimson", "linestyle": "-"},
         ]
         plot_specs = [
-            (axes[0, 0], "magnetization", r"Magnetization $m$"),
+            (axes[0, 0], "magnetization", r"Spin density $m$"),
             (axes[0, 1], "energy_mean", r"Mean energy $\langle E \rangle$"),
             (axes[1, 0], "susceptibility", r"Susceptibility $\chi$"),
             (axes[1, 1], "heat_capacity", r"Specific heat $C_V$"),
@@ -45,21 +46,22 @@ class AnalysisResults:
                 axis.plot(
                     result.temperature,
                     getattr(result, attribute_name),
-                    marker="o",
+                    marker="d",
                     **style,
                     label=label,
                 )
-            axis.set_xlabel(r"Temperature $(k_B / J)\cdot T$")
-            axis.set_ylabel(ylabel)
+            axis.set_xlabel(r"Temperature $(k_B / J)\cdot T$",fontsize=FONTSIZE)
+            axis.set_ylabel(ylabel, fontsize=FONTSIZE)
             axis.grid(True)
             axis.legend(frameon=True, facecolor="white", framealpha=1)
 
-        figure.suptitle("Ising model analysis")
+        figure.suptitle("Ising model analysis", fontsize=FONTSIZE+4)
         return figure
 
-    def plot_autocorrelation(self, beta_j: np.ndarray) -> plt.Figure:
+    def plot_autocorrelation(self, beta_j: np.ndarray, beta_index: int) -> plt.Figure:
         labels = [r"$75\%$ spin up", r"$75\%$ spin down"]
-        beta_index = beta_j.size // 2
+        if not 0 < beta_index <= beta_j.size:
+            raise ValueError("beta index is not a valid number")
 
         figure, (axis_corr, axis_spin) = plt.subplots(1, 2, figsize=(12, 4.5), constrained_layout=True)
         styles = [
@@ -85,17 +87,17 @@ class AnalysisResults:
                 label=label,
                 **style,
             )
-            axis_spin.axvspan(sample_start, result.time_steps, color=style["color"], alpha=0.12)
+            axis_spin.axvspan(sample_start, result.time_steps, color='gray', alpha=0.3)
 
-        axis_corr.set_xlabel(r"lag $\ell$")
-        axis_corr.set_ylabel(r"Autocorrelation $C(\ell)/C(0)$")
-        axis_corr.set_title(rf"Autocorrelation at $\beta J={beta_j[beta_index]:.2f}$")
+        axis_corr.set_xlabel(r"Lag $\ell$", fontsize=FONTSIZE)
+        axis_corr.set_ylabel(r"Autocorrelation $c(\ell)$", fontsize=FONTSIZE)
+        axis_corr.set_title(rf"Autocorrelation at $\beta J={beta_j[beta_index]:.2f}$", fontsize=FONTSIZE+2)
         axis_corr.grid(True, alpha=1.0)
         axis_corr.legend(frameon=True, facecolor="white", framealpha=1)
 
-        axis_spin.set_xlabel(r"steps $t$")
-        axis_spin.set_ylabel(r"Spin density $m(t)=M(t)/N^2$")
-        axis_spin.set_title("Spin-density history and sampling window")
+        axis_spin.set_xlabel(r"MC steps $t$", fontsize=FONTSIZE)
+        axis_spin.set_ylabel(r"Spin density $m(t)$", fontsize=FONTSIZE)
+        axis_spin.set_title("Sample Spin Measurements", fontsize=FONTSIZE+2)
         axis_spin.grid(True, alpha=1.0)
         axis_spin.legend(frameon=True, facecolor="white", framealpha=1)
 
