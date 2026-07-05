@@ -7,24 +7,44 @@ FONTSIZE = 16
 
 @dataclass(frozen=True)
 class IsingResult:
-    temperature: np.ndarray
     magnetization: np.ndarray
     energy_mean: np.ndarray
-    energy_std: np.ndarray
     susceptibility: np.ndarray
     heat_capacity: np.ndarray
+    
+    eval_time_steps: np.ndarray
+    spin_density: np.ndarray
     autocorrelation_time: np.ndarray
     sample_window: np.ndarray
     autocorrelation_lags: np.ndarray
     autocorrelation: np.ndarray
-    spin_density: np.ndarray
-    time_steps: int
+
+    thinning_stride: np.ndarray | None = None
+    thinned_sample_count: np.ndarray | None = None
+    magnetization_err: np.ndarray | None = None
+    energy_mean_err: np.ndarray | None = None
+    Chi_err: np.ndarray | None = None
+    Cv_err: np.ndarray | None = None
+
 
 class AnalysisResults:
-    def __init__(self, results: list[IsingResult]):
+    def __init__(self, results: list[IsingResult], beta_j: np.ndarray, time_steps: int, multiplier: np.ndarray):
         if not results:
             raise ValueError("results must not be empty")
         self.results = results
+        self.beta_j = np.asarray(beta_j, dtype=np.float64)
+        self.temperature = 1.0 / self.beta_j
+        self.time_steps = time_steps
+        self.mult = multiplier
+
+    def get_sampling_stride(self, safety_factor: float = 5.0) -> np.ndarray:
+        if all(result.thinning_stride is not None for result in self.results):
+            stride_grid = np.vstack([result.thinning_stride for result in self.results])
+            return np.max(stride_grid, axis=0).astype(np.int64)
+
+        tau_grid = np.vstack([result.autocorrelation_time for result in self.results])
+        conservative_tau = np.max(tau_grid, axis=0)
+        return np.maximum(1, np.ceil(safety_factor * conservative_tau).astype(np.int64))
 
     def plot_summary(self) -> plt.Figure:
         labels = [r'$75\%$ spin up', r'$75\%$ spin down']
@@ -40,16 +60,30 @@ class AnalysisResults:
             (axes[1, 1], "heat_capacity", r"Specific heat $C_V$"),
         ]
 
+        error_specs = {
+            "magnetization": "magnetization_err",
+            "energy_mean": "energy_mean_err",
+            "susceptibility": "Chi_err",
+            "heat_capacity": "Cv_err",
+        }
+       
         for axis, attribute_name, ylabel in plot_specs:
             for index, (result, label) in enumerate(zip(self.results, labels, strict=True)):
                 style = styles[index % len(styles)]
-                axis.plot(
-                    result.temperature,
-                    getattr(result, attribute_name),
-                    marker="d",
-                    **style,
-                    label=label,
-                )
+                y_values = getattr(result, attribute_name)
+                error_name = error_specs[attribute_name]
+                y_errors = getattr(result, error_name)
+
+                if y_errors is None:
+                    axis.plot(
+                        self.temperature, y_values,
+                        marker="d", **style, label=label
+                    )
+                else:
+                    axis.errorbar(
+                        self.temperature, y_values, yerr=y_errors, 
+                        marker="d", capsize=2, **style, label=label
+                    )
             axis.set_xlabel(r"Temperature $(k_B / J)\cdot T$",fontsize=FONTSIZE)
             axis.set_ylabel(ylabel, fontsize=FONTSIZE)
             axis.grid(True)
@@ -58,9 +92,34 @@ class AnalysisResults:
         figure.suptitle("Ising model analysis", fontsize=FONTSIZE+4)
         return figure
 
-    def plot_autocorrelation(self, beta_j: np.ndarray, beta_index: int) -> plt.Figure:
+    def plot_autocorrelation_time(self) -> plt.Figure:
         labels = [r"$75\%$ spin up", r"$75\%$ spin down"]
-        if not 0 < beta_index <= beta_j.size:
+        figure, axis = plt.subplots(figsize=(7.5, 4.8), constrained_layout=True)
+        styles = [
+            {"color": "blue", "linestyle": "-"},
+            {"color": "crimson", "linestyle": "-"},
+        ]
+
+        for index, (result, label) in enumerate(zip(self.results, labels, strict=True)):
+            style = styles[index % len(styles)]
+            axis.plot(
+                self.beta_j,
+                result.autocorrelation_time,
+                marker="d",
+                label=label,
+                **style,
+            )
+
+        axis.set_xlabel(r"$\beta J$", fontsize=FONTSIZE)
+        axis.set_ylabel(r"Autocorrelation time $\tau_{int}$", fontsize=FONTSIZE)
+        axis.set_title(r"Autocorrelation time versus $\beta J$", fontsize=FONTSIZE+2)
+        axis.grid(True)
+        axis.legend(frameon=True, facecolor="white", framealpha=1)
+        return figure
+
+    def plot_autocorrelation(self, beta_index: int) -> plt.Figure:
+        labels = [r"$75\%$ spin up", r"$75\%$ spin down"]
+        if not 0 < beta_index <= self.beta_j.size:
             raise ValueError("beta index is not a valid number")
 
         figure, (axis_corr, axis_spin) = plt.subplots(1, 2, figsize=(12, 4.5), constrained_layout=True)
@@ -72,26 +131,27 @@ class AnalysisResults:
         for index, (result, label) in enumerate(zip(self.results, labels, strict=True)):
             style = styles[index % len(styles)]
             tau_int = result.autocorrelation_time[beta_index]
+            sample_window = int(result.sample_window[beta_index])
+            eval_length = int(result.eval_time_steps[beta_index])
             axis_corr.plot(
-                result.autocorrelation_lags,
-                result.autocorrelation[beta_index],
+                result.autocorrelation_lags[:sample_window],
+                result.autocorrelation[beta_index, :sample_window],
                 label=rf"{label} ($\tau_{{int}}={tau_int:.2f}$)",
                 **style,
             )
 
-            sample_window = int(result.sample_window[beta_index])
-            sample_start = max(result.time_steps - sample_window, 0)
+            sample_start = max(eval_length - sample_window, 0)
             axis_spin.plot(
-                np.arange(result.time_steps),
-                result.spin_density[beta_index],
+                np.arange(eval_length),
+                result.spin_density[beta_index, :eval_length],
                 label=label,
                 **style,
             )
-            axis_spin.axvspan(sample_start, result.time_steps, color='gray', alpha=0.3)
+            axis_spin.axvspan(sample_start, eval_length, color='gray', alpha=0.3)
 
         axis_corr.set_xlabel(r"Lag $\ell$", fontsize=FONTSIZE)
         axis_corr.set_ylabel(r"Autocorrelation $c(\ell)$", fontsize=FONTSIZE)
-        axis_corr.set_title(rf"Autocorrelation at $\beta J={beta_j[beta_index]:.2f}$", fontsize=FONTSIZE+2)
+        axis_corr.set_title(rf"Autocorrelation at $\beta J={self.beta_j[beta_index]:.2f}$", fontsize=FONTSIZE+2)
         axis_corr.grid(True, alpha=1.0)
         axis_corr.legend(frameon=True, facecolor="white", framealpha=1)
 

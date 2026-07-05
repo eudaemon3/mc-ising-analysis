@@ -1,173 +1,134 @@
 import numpy as np
-from scipy.signal import correlate, correlation_lags
+
 from mpi4py import MPI
 
 from lib.ising_analysis import IsingResult
 from lib.lattice_2d import Lattice2D
+from lib.helpers import METRIC_SCHEMA, jackknife_error, autocorr
 import lib.metropolis_routines as routine 
 
-
 class IsingModel:
-    def __init__(self, lattice: Lattice2D, time_steps: int, beta_j: np.ndarray):
+    def __init__(self, lattice: Lattice2D, time_steps: int, beta_j: np.ndarray, multiplier: np.ndarray):
         self.lattice = lattice
         self.time = time_steps
         self.beta_j = np.asarray(beta_j, dtype=np.float64)
-
-    @staticmethod
-    def _autocorr(series: np.ndarray) -> tuple[np.ndarray, float]:
-        values = np.asarray(series, dtype=np.float64)
-        if values.ndim != 1:
-            raise ValueError("series must be one-dimensional")
-
-        y = values - values.mean()
-        if np.allclose(y, 0.0):
-            return np.ones(values.size, dtype=np.float64), 0.5
-
-        raw = correlate(y, y, mode="full", method="fft")
-        lags = correlation_lags(values.size, values.size, mode="full")
-        acorr = raw[lags >= 0]
-        acorr /= acorr[0]
-
-        if acorr.size == 0:
-            return acorr, 0.0
-
-        stop_index = np.where(acorr[1:] <= 0.0)[0]
-        if stop_index.size == 0:
-            cutoff = acorr.size
-        else:
-            cutoff = stop_index[0] + 1
-        tau_int = 0.5 + float(acorr[1:cutoff].sum())
-
-        return acorr, tau_int
-
-    def _simulate_system(self, beta_value: float, pbc: bool, sweep: bool) -> tuple[np.ndarray, np.ndarray]:
+        self.mult = np.asarray(multiplier, dtype=np.int32)
+  
+    def _simulate_system(self, beta_value: float, pbc: bool, sweep: bool, index: int) -> tuple[np.ndarray, np.ndarray]:
+        routine_map = {
+            (True, True): routine.metropolis_pbc_sweep,
+            (True, False): routine.metropolis_pbc_single,
+            (False, True): routine.metropolis_open_sweep,
+            (False, False): routine.metropolis_open_single
+        }
+        
+        selected_routine = routine_map[(pbc, sweep)]
         initial_energy = self.lattice.get_energy()
-        metropolis_routine = None
-        if pbc:
-            if sweep:
-                metropolis_routine = routine.metropolis_pbc_sweep(self.lattice.lattice, self.time, beta_value, initial_energy)
-            else:
-                metropolis_routine = routine.metropolis_pbc_single(self.lattice.lattice, self.time, beta_value, initial_energy)
-        else:
-            if sweep:
-                metropolis_routine = routine.metropolis_open_sweep(self.lattice.lattice, self.time, beta_value, initial_energy)
-            else:
-                metropolis_routine = routine.metropolis_open_single(self.lattice.lattice, self.time, beta_value, initial_energy)
-        return metropolis_routine
+        eval_time = self.time * self.mult[index]
+        return selected_routine(self.lattice.lattice, eval_time, beta_value, initial_energy)
 
-    def run_analysis(self, pbc: bool = False, sweep: bool = False,
-        comm=MPI.COMM_WORLD, seed_offset: int = 0) -> IsingResult | None:
+    def _analyze_single_beta(self, index: int, beta_value: float, pbc: bool, sweep: bool) -> dict:
+        spins, energies = self._simulate_system(beta_value, pbc, sweep, index)
+        
+        burn_in_idx = int(self.time * self.mult[index] * 0.2)
+        spin_density = spins / (self.lattice.length**2)
+        eq_spins = spin_density[burn_in_idx:]
+        eq_energies = energies[burn_in_idx:]
 
-        beta_values = self.beta_j
-        temperatures = 1.0 / beta_values
-        n_beta = beta_values.size
+        acorr, tau_int = autocorr(eq_spins)
+        
+        tau_for_stride = max(float(tau_int), 0.5)
+        thinning_stride = max(int(np.ceil(5.0 * tau_for_stride)), 1)
+        thinned_sample_count = max(1, len(eq_spins) // thinning_stride)
 
-        # 1. Distribute beta_j values evenly among processes
-        # -------------------------------------------------------------------------
+        length_sq = self.lattice.length**2
+
+        mean_metric = lambda d: d.mean()
+        Chi_metric = lambda d: beta_value * length_sq * d.var()
+        Cv_metric = lambda d: (beta_value**2) * d.var() / length_sq
+        return {
+            "index": index,
+            "eval_time_steps": spins.size,
+            "spin_history": spins,
+            "autocorrelation": acorr,
+            "autocorrelation_time": tau_int,
+            "sample_window": len(eq_spins),
+            "thinning_stride": thinning_stride,
+            "thinned_sample_count": thinned_sample_count,
+            "magnetization": eq_spins.mean(),
+            "energy_mean": eq_energies.mean(),
+            "susceptibility": beta_value * length_sq * eq_spins.var(),
+            "heat_capacity": (beta_value**2) * eq_energies.var() / length_sq,
+            "magnetization_err": jackknife_error(eq_spins, mean_metric, tau_int),
+            "energy_mean_err": jackknife_error(eq_energies, mean_metric, tau_int),
+            "Chi_err": jackknife_error(eq_spins, Chi_metric, tau_int),
+            "Cv_err": jackknife_error(eq_energies, Cv_metric, tau_int)
+        }
+
+    def run_analysis(
+        self, pbc: bool = False, sweep: bool = False, 
+        comm=MPI.COMM_WORLD, seed_offset: int = 0
+        ) -> IsingResult | None:
+        
         rank = comm.Get_rank()
         size = comm.Get_size()
-        local_B_indices = np.array_split(np.arange(n_beta), size)[rank] 
-        local_count = local_B_indices.size
-
-        # every subprocess performs caluculation based on index in beta_j array
-        # local count -> number of temperature values for each subprocess
-        local_magnetization = np.zeros(local_count, dtype=np.float64)
-        local_energy_mean = np.zeros(local_count, dtype=np.float64)
-        local_energy_std = np.zeros(local_count, dtype=np.float64)
-        local_susceptibility = np.zeros(local_count, dtype=np.float64)
-        local_heat_capacity = np.zeros(local_count, dtype=np.float64)
-        local_autocorrelation_time = np.zeros(local_count, dtype=np.float64)
-        local_sample_window = np.zeros(local_count, dtype=np.int64)
         
-        burn_in_idx = int(self.time * 0.2) 
-        eq_length = self.time - burn_in_idx
-        local_spin_history = np.zeros((local_count, self.time), dtype=np.float64)
-        local_autocorrelation = np.zeros((local_count, eq_length), dtype=np.float64)
-        autocorrelation_lags = np.arange(eq_length, dtype=np.int64)
+        # 1. Distribute beta_j values evenly among processes
+        # ------------------------------------------------------------------------- 
+        local_indices = np.array_split(np.arange(self.beta_j.size), size)[rank]
 
-        # 2. Each process: simulate system for for every given beta_j value
-        # -------------------------------------------------------------------------
-        for local_pos, index in enumerate(local_B_indices):
-            beta_value = beta_values[index]
+        # 2. Each process analyzes its assigned beta_j values 
+        # ------------------------------------------------------------------------- 
+        local_results = []
+        for index in local_indices:
+            beta_value = self.beta_j[index]
             np.random.seed(seed_offset + index)
             print(f"Process {rank}: Calculating beta*J = {beta_value:.2f}")
-            spins, energies = self._simulate_system(beta_value, pbc, sweep)
-
-            spin_density = spins / (self.lattice.length**2)
-            local_spin_history[local_pos] = spins
-
-            eq_spins = spin_density[burn_in_idx:]
-            eq_energies = energies[burn_in_idx:]
-
-            acorr, tau_int = self._autocorr(eq_spins)
-            local_sample_window[local_pos] = len(eq_spins)
-
-            local_magnetization[local_pos] = eq_spins.mean()
-            local_energy_mean[local_pos] = eq_energies.mean()
-            local_energy_std[local_pos] = eq_energies.std()
-            local_susceptibility[local_pos] = beta_value * self.lattice.length**2 * eq_spins.var()
-            local_heat_capacity[local_pos] = (beta_value**2) * eq_energies.var() / self.lattice.length**2
-
-            local_autocorrelation[local_pos, :acorr.size] = acorr
-            local_autocorrelation_time[local_pos] = tau_int
+            
+            result_dict = self._analyze_single_beta(index, beta_value, pbc, sweep)
+            local_results.append(result_dict)
 
         # 3. Gather toghether the data from all processes
-        # -------------------------------------------------------------------------
-        gather_data = comm.gather(
-            {
-                "indices": np.asarray(local_B_indices, dtype=np.int64),
-                "magnetization": local_magnetization,
-                "energy_mean": local_energy_mean,
-                "energy_std": local_energy_std,
-                "susceptibility": local_susceptibility,
-                "heat_capacity": local_heat_capacity,
-                "autocorrelation_time": local_autocorrelation_time,
-                "sample_window": local_sample_window,
-                "autocorrelation": local_autocorrelation,
-                "spin_history": local_spin_history,
-            },
-            root=0,
-        )
+        # ------------------------------------------------------------------------- 
+        gathered_data = comm.gather(local_results, root=0)
 
-        # 4. Reconstruct result arrays from all sub-processes
-        # -------------------------------------------------------------------------
         if rank != 0:
             return None
 
-        magnetization = np.zeros(n_beta, dtype=np.float64)
-        energy_mean = np.zeros(n_beta, dtype=np.float64)
-        energy_std = np.zeros(n_beta, dtype=np.float64)
-        susceptibility = np.zeros(n_beta, dtype=np.float64)
-        heat_capacity = np.zeros(n_beta, dtype=np.float64)
-        autocorrelation_time = np.zeros(n_beta, dtype=np.float64)
-        sample_window = np.zeros(n_beta, dtype=np.int64)
-        spin_history = np.zeros((n_beta, self.time), dtype=np.float64)
-        autocorrelation = np.zeros((n_beta, eq_length), dtype=np.float64)
+        all_results = []
+        for process_list in gathered_data:
+            for single_beta_dict in process_list:
+                all_results.append(single_beta_dict)
 
-        for payload in gather_data:
-            indices = payload["indices"]
-            for l, index in enumerate(indices):
-                magnetization[index] = payload["magnetization"][l]
-                energy_mean[index] = payload["energy_mean"][l]
-                energy_std[index] = payload["energy_std"][l]
-                susceptibility[index] = payload["susceptibility"][l]
-                heat_capacity[index] = payload["heat_capacity"][l]
-                autocorrelation_time[index] = payload["autocorrelation_time"][l]
-                sample_window[index] = payload["sample_window"][l]
-                spin_history[index] = payload["spin_history"][l]
-                autocorrelation[index] = payload["autocorrelation"][l]
+        # 4. allocate space for results data
+        # ------------------------------------------------------------------------- 
+        n_beta = self.beta_j.size
+        max_time_steps = int(self.time * np.max(self.mult))
+        max_burn_in = int(max_time_steps * 0.2)
+        max_eq_length = max_time_steps - max_burn_in
 
-        return IsingResult(
-            temperature=temperatures,
-            magnetization=magnetization,
-            energy_mean=energy_mean,
-            energy_std=energy_std,
-            susceptibility=susceptibility,
-            heat_capacity=heat_capacity,
-            autocorrelation_time=autocorrelation_time,
-            sample_window=sample_window,
-            autocorrelation_lags=autocorrelation_lags,
-            autocorrelation=autocorrelation,
-            spin_density=spin_history,
-            time_steps=self.time,
-        )
+        final_data = {
+            "autocorrelation_lags": np.arange(max_eq_length, dtype=np.int64),
+            "spin_density": np.zeros((n_beta, max_time_steps), dtype=np.float64),
+            "autocorrelation": np.zeros((n_beta, max_eq_length), dtype=np.float64),
+            "eval_time_steps": np.zeros(n_beta, dtype=np.int64),
+        }
+        for metric, dtype in METRIC_SCHEMA.items():
+            final_data[metric] = np.zeros(n_beta, dtype=dtype)
+
+        # 5. fill results dict witch the calculated values
+        # ------------------------------------------------------------------------- 
+        for res in all_results:
+            target_idx = res["index"] # global index of current beta_j
+            
+            spin_history = res["spin_history"]
+            final_data["eval_time_steps"][target_idx] = res["eval_time_steps"]
+            final_data["spin_density"][target_idx, :spin_history.size] = spin_history
+            acorr_data = res["autocorrelation"]
+            final_data["autocorrelation"][target_idx, :acorr_data.size] = acorr_data
+            
+            for metric_name in METRIC_SCHEMA.keys():
+                metric_value = res[metric_name]
+                final_data[metric_name][target_idx] = metric_value
+
+        return IsingResult(**final_data)
