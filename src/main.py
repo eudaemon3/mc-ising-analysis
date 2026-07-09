@@ -15,12 +15,12 @@ plt.rcParams.update({"font.size": 14})
 
 lattice_size = 64
 spin_probabilities = (0.25, 0.75)
-time_steps = 80_000
+time_steps = 1_000_000
 beta_j = np.linspace(0.20, 0.75, 12)
 multiplier = np.ones_like(beta_j)
-multiplier[4] = 2
-multiplier[5] = 4
-multiplier[6] = 2
+# multiplier[4] = 2
+# multiplier[5] = 4
+# multiplier[6] = 2
 
 random_seed = 1337
 
@@ -34,7 +34,7 @@ def main() -> None:
     results = []
     for model_index, lattice in enumerate(lattices):
         model = IsingModel(lattice, time_steps, beta_j, multiplier)
-        result = model.run_analysis(False, True, comm=comm, seed_offset=model_index * 100_000)
+        result = model.run_analysis(False, False, comm=comm, seed_offset=model_index * 100_000)
         if rank == 0:
             results.append(result)
 
