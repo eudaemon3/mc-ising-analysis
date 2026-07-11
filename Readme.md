@@ -23,6 +23,8 @@ Die Analyse besteht aus den folgenden Komponenten:
 - numba
 - mpi4py
 
+### Hinweis
+Das gesamte Projekt ist so konzipiert, dass es in dem bereitgestellten Devcontainer ausgeführt wird.
 
 ## Beispiel
 
