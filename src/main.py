@@ -21,7 +21,7 @@ plt.rcParams.update({"font.size": 14})
 # -----------------------------------------------------------------------------------------
 lattice_size = 64
 spin_probabilities = (0.25, 0.75)
-time_steps = 80_000
+time_steps = 1_000_000
 beta_j = np.linspace(0.20, 0.75, 12)
 
 random_seed = 1337
