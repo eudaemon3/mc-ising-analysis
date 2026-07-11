@@ -1,20 +1,55 @@
 import numpy as np
-
 from mpi4py import MPI
 
-from lib.ising_analysis import IsingResult
+from lib.analysis_result import IsingResult
 from lib.lattice_2d import Lattice2D
 from lib.helpers import METRIC_SCHEMA, jackknife_error, autocorr
 import lib.metropolis_routines as routine 
 
 class IsingModel:
-    def __init__(self, lattice: Lattice2D, time_steps: int, beta_j: np.ndarray, multiplier: np.ndarray):
+    """
+    A class to perform Monte Carlo simulations of the 2D Ising Model.
+
+    Attributes
+    ----------
+    lattice : Lattice2D
+        Instance of the 2D lattice providing the initial spin configuration and energy.
+    time : int
+        Base number of Monte Carlo steps to evaluate for each temperature point.
+    beta_j : np.ndarray
+        Array of dimensionless inverse temperature coupling values (beta * J = 1/T) to simulate.
+    mult : np.ndarray
+        Per-beta multiplier applied to the base simulation length, allowing for 
+        longer equilibration/sampling at critical temperatures.
+
+    Example
+    -------
+    >>> lattice = Lattice2D(32, 0.25)
+    >>> model = IsingModel(lattice, time_steps=5000, beta_j=np.array([0.2, 0.4]))
+    >>> result = model.run_analysis()
+    """
+    def __init__(self, 
+            lattice: Lattice2D, 
+            time_steps: int, 
+            beta_j: np.ndarray, 
+            multiplier: np.ndarray | None = None
+        ) -> None:
+
         self.lattice = lattice
         self.time = time_steps
         self.beta_j = np.asarray(beta_j, dtype=np.float64)
-        self.mult = np.asarray(multiplier, dtype=np.int32)
+
+        if multiplier is None:
+            self.mult = np.ones_like(beta_j)
+        else:
+            self.mult = np.asarray(multiplier, dtype=np.int32)
   
-    def _simulate_system(self, beta_value: float, pbc: bool, sweep: bool, index: int) -> tuple[np.ndarray, np.ndarray]:
+    def _simulate_system(
+            self, beta_value: float, pbc: bool, sweep: bool, index: int
+        ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Executes a single Metropolis Monte Carlo simulation for a specific beta value.
+        """
         routine_map = {
             (True, True): routine.metropolis_pbc_sweep,
             (True, False): routine.metropolis_pbc_single,
@@ -27,7 +62,13 @@ class IsingModel:
         eval_time = self.time * self.mult[index]
         return selected_routine(self.lattice.lattice, eval_time, beta_value, initial_energy)
 
-    def _analyze_single_beta(self, index: int, beta_value: float, pbc: bool, sweep: bool) -> dict:
+    def _analyze_single_beta(
+            self, index: int, beta_value: float, pbc: bool, sweep: bool
+        ) -> dict:
+        """
+        Performs a simulation at a given inverse temperature, discards burn-in data, 
+        and calculates thermodynamic observables along with their statistical errors.
+        """
         spins, energies = self._simulate_system(beta_value, pbc, sweep, index)
         
         burn_in_idx = int(self.time * self.mult[index] * 0.2)
@@ -66,18 +107,47 @@ class IsingModel:
         }
 
     def run_analysis(
-        self, pbc: bool = False, sweep: bool = False, 
-        comm=MPI.COMM_WORLD, seed_offset: int = 0
+            self, 
+            pbc: bool = False, 
+            sweep: bool = False, 
+            comm=MPI.COMM_WORLD, 
+            seed_offset: int = 0
         ) -> IsingResult | None:
-        
+        """
+        Executes the Monte Carlo simulations across all specified beta_j values, 
+        utilizing MPI to distribute the workload among available parallel workers.
+
+        Parameters
+        ----------
+        pbc : bool, default=False
+            If True, enforces periodic boundary conditions on the lattice.
+        sweep : bool, default=False
+            If True, updates the lattice using full-sweep Metropolis steps rather 
+            than single-spin updates.
+        comm : MPI.Comm, optional
+            MPI communicator used to parallelize the simulation workload.
+        seed_offset : int, default=0
+            Offset applied to the beta index to ensure distinct random seeds 
+            across distributed tasks.
+
+        Returns
+        -------
+        IsingResult | None
+            A populated dataclass containing the aggregated analysis results on the 
+            root process. Returns None for all other processes.
+
+        Example
+        -------
+        >>> result = model.run_analysis(pbc=True, sweep=True)
+        """
         rank = comm.Get_rank()
         size = comm.Get_size()
         
-        # 1. Distribute beta_j values evenly among processes
+        # 1. Distribute beta_j values evenly among available processes
         # ------------------------------------------------------------------------- 
         local_indices = np.array_split(np.arange(self.beta_j.size), size)[rank]
 
-        # 2. Each process analyzes its assigned beta_j values 
+        # 2. Each process analyzes its assigned subset of beta_j values 
         # ------------------------------------------------------------------------- 
         local_results = []
         for index in local_indices:
@@ -88,7 +158,7 @@ class IsingModel:
             result_dict = self._analyze_single_beta(index, beta_value, pbc, sweep)
             local_results.append(result_dict)
 
-        # 3. Gather toghether the data from all processes
+        # 3. Gather together the processed data from all MPI workers
         # ------------------------------------------------------------------------- 
         gathered_data = comm.gather(local_results, root=0)
 
@@ -100,7 +170,7 @@ class IsingModel:
             for single_beta_dict in process_list:
                 all_results.append(single_beta_dict)
 
-        # 4. allocate space for results data
+        # 4. Allocate space for the result data
         # ------------------------------------------------------------------------- 
         n_beta = self.beta_j.size
         max_time_steps = int(self.time * np.max(self.mult))
@@ -116,7 +186,7 @@ class IsingModel:
         for metric, dtype in METRIC_SCHEMA.items():
             final_data[metric] = np.zeros(n_beta, dtype=dtype)
 
-        # 5. fill results dict witch the calculated values
+        # 5. Fill final results dictionary with the calculated values
         # ------------------------------------------------------------------------- 
         for res in all_results:
             target_idx = res["index"] # global index of current beta_j

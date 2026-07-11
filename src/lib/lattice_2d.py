@@ -4,14 +4,21 @@ import subprocess
 
 class Lattice2D:
     """
-    Custom 2D-Ising-Model lattice class.
-    The lattice is represented by an N by N array of spins taking values of +1 or -1.
+    A representation of a 2D square lattice for the Ising Model.
 
-    Attributes:
-        N (int): 
-            The size of the square lattice.
-        spin_prob (float): 
-            The probability of initializing a spin to -1.
+    Attributes
+    ----------
+    length : int
+        The linear dimension (N) of the N x N square lattice.
+    spin_prob (float): 
+        The probability of initializing a spin to -1.
+    lattice : np.ndarray
+        The N x N numpy array containing the generated spin configuration.
+
+    Example
+    -------
+    >>> Lattice2D(64, 0.25) # creates a 64x64 grid with 75% of spins pointing up.
+    >>> Lattice2D(64, 0.75) # creates a 64x64 grid with 75% of spins pointing down.
     """
 
     def __init__(self, N: int, spin_prob: float):
@@ -19,6 +26,7 @@ class Lattice2D:
             raise ValueError("spin_prob must be between 0 and 1.")
 
         self.length = N # assume square lattice
+        self.spin_prob = spin_prob
         init_rnd = np.random.random((N,N))
 
         lattice = np.ones((N,N))
@@ -27,6 +35,9 @@ class Lattice2D:
         self.lattice = lattice
 
     def _sum_edges(self, pos:tuple[int]) -> int:
+        """
+        Calculate the interaction energy of a single spin with its nearest neighbors.
+        """
         E_i = 0
         y,x = pos
         sigma_i = self.lattice[y,x]
@@ -43,6 +54,9 @@ class Lattice2D:
         return E_i
     
     def get_energy(self) -> np.float64:
+        """
+        Compute the total energy of the current lattice configuration.
+        """
         E_tot = 0
         for y in range(self.length):
             for x in range(self.length):
@@ -50,6 +64,9 @@ class Lattice2D:
         return -E_tot
     
     def _show_img(self) -> None:
+        """
+        Display the initial lattice configuration as an image.
+        """
         plt.figure(5,5)
         plt.savefig("/tmp/lattice_init.png")
-        subprocess.run(["code", "/tmp/lattice_init.png"])
+        subprocess.run(["code", "/tmp/lattice_init.png"]) 

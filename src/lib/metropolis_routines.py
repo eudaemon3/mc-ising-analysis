@@ -1,16 +1,29 @@
+"""
+Optimized Numba routines for simulating the 2D Ising Model.
+
+This module provides Just-In-Time (JIT) compiled Metropolis-Hastings 
+algorithms to update spin configurations. 
+
+It supports:
+- both Periodic Boundary Conditions (PBC) 
+- and Open Boundary Conditions (OBC).
+
+As well as choices for:
+- either full lattice sweeps (N x N flip attempts) 
+- or individual single-spin updates per step.
+"""
 import numpy as np
 from numba import njit
 
 @njit("UniTuple(f8[:], 2)(f8[:,:], i8, f8, f8)", nogil=True)
 def metropolis_pbc_sweep(
-    spin_array: np.ndarray,
-    times: int,
-    beta_J: np.float64,
-    energy: np.float64,
-) -> tuple[np.ndarray, np.ndarray]:
+        spin_array: np.ndarray,
+        times: int,
+        beta_J: np.float64,
+        energy: np.float64,
+    ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Metropolis Algorithm for the 2D-Ising-Model using periodic boundary conditions.
-    'times' now represents full Monte Carlo sweeps (N*N flip attempts).
+    Metropolis Algorythm with Periodic Boundary Conditions and full lattice sweeps.
     """
     spin_array = spin_array.copy()
     N = len(spin_array)
@@ -20,7 +33,7 @@ def metropolis_pbc_sweep(
     net_energy = np.zeros(times)
 
     for t in range(times):
-        # für jeden Schritt ein Sweep über den gesamten Lattice
+        # For each time step, perform a full sweep across the lattice
         for _ in range(N_sq):
             x = np.random.randint(0, N)
             y = np.random.randint(0, N)
@@ -45,14 +58,13 @@ def metropolis_pbc_sweep(
 
 @njit("UniTuple(f8[:], 2)(f8[:,:], i8, f8, f8)", nogil=True)
 def metropolis_open_sweep(
-    spin_array: np.ndarray,
-    times: int,
-    beta_J: np.float64,
-    energy: np.float64
-) -> tuple[np.ndarray, np.ndarray]:
+        spin_array: np.ndarray,
+        times: int,
+        beta_J: np.float64,
+        energy: np.float64
+    ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Metropolis Algorithm for the 2D-Ising-Model using open boundary conditions.
-    'times' now represents full Monte Carlo sweeps (N*N flip attempts).
+    Metropolis Algorythm with Open Boundary Conditions and full lattice sweeps.
     """
     spin_array = spin_array.copy()
     net_spin = np.zeros(times)
@@ -95,14 +107,13 @@ def metropolis_open_sweep(
 
 @njit("UniTuple(f8[:], 2)(f8[:,:], i8, f8, f8)", nogil=True)
 def metropolis_pbc_single(
-    spin_array: np.ndarray,
-    times: int,
-    beta_J: np.float64,
-    energy: np.float64,
-) -> tuple[np.ndarray, np.ndarray]:
+        spin_array: np.ndarray,
+        times: int,
+        beta_J: np.float64,
+        energy: np.float64,
+    ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Metropolis Algorithm for the 2D-Ising-Model using periodic boundary conditions.
-    'times' now represents full Monte Carlo sweeps (N*N flip attempts).
+    Metropolis Algorythm with Periodic Boundary Conditions and single-spin update attempts.
     """
     spin_array = spin_array.copy()
     N = len(spin_array)
@@ -135,14 +146,13 @@ def metropolis_pbc_single(
 
 @njit("UniTuple(f8[:], 2)(f8[:,:], i8, f8, f8)", nogil=True)
 def metropolis_open_single(
-    spin_array: np.ndarray,
-    times: int,
-    beta_J: np.float64,
-    energy: np.float64
-) -> tuple[np.ndarray, np.ndarray]:
+        spin_array: np.ndarray,
+        times: int,
+        beta_J: np.float64,
+        energy: np.float64
+    ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Metropolis Algorithm for the 2D-Ising-Model using open boundary conditions.
-    'times' now represents full Monte Carlo sweeps (N*N flip attempts).
+    Metropolis Algorythm with Open Boundary Conditions and single-spin update attempts.
     """
     spin_array = spin_array.copy()
     net_spin = np.zeros(times)
