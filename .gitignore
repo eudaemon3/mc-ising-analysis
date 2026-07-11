@@ -6,5 +6,4 @@ build/
 .venv/
 .pytest_cache/
 .coverage
-.res/
 .literature/
